@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JakSel Cafe Finder - AI Rekomendasi Tempat Nongkrong</title>
+    <meta name="description"
+        content="AI rekomendasi untuk tempat nongkrong kamu di Jaksel. Temukan kafe terbaik berdasarkan budget, rating, dan lokasimu. Powered by AI & OpenStreetMap.">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+
+    <style>
+        /* ===================== DESIGN TOKENS ===================== */
+        :root {
+            --bg: #0a0a0f;
+            --bg-2: #10101a;
+            --bg-3: #17172a;
+            --bg-4: #1e1e33;
+            --border: rgba(255, 255, 255, 0.07);
+            --border-hot: rgba(220, 38, 38, 0.45);
+
+            --red: #dc2626;
+            --red-2: #ef4444;
+            --red-glow: rgba(220, 38, 38, 0.18);
+            --red-dim: rgba(220, 38, 38, 0.10);
+
+            --gold: #f59e0b;
+            --gold-dim: rgba(245, 158, 11, 0.12);
+            --green: #10b981;
+            --green-dim: rgba(16, 185, 129, 0.12);
+            --blue: #3b82f6;
+            --blue-dim: rgba(59, 130, 246, 0.12);
+            --purple: #8b5cf6;
+            --purple-dim: rgba(139, 92, 246, 0.12);
+
+            --text: #f1f1f5;
+            --text-2: #a0a0b8;
+            --text-3: #5a5a78;
+
+            --r-sm: 8px;
+            --r-md: 12px;
+            --r-lg: 16px;
+            --r-xl: 22px;
+
+            --sidebar: 380px;
+            --ease: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* ===================== RESET ===================== */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ===================== SCROLLBAR ===================== */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-4);
+            border-radius: 4px;
+        }
+
+        /* ===================== SIDEBAR ===================== */
+        .sidebar {
+            width: var(--sidebar);
+            min-width: var(--sidebar);
+            background: var(--bg-2);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 999;
+            position: relative;
+        }
+
+        /* --- Brand Header --- */
+        .brand-header {
+            padding: 20px 20px 16px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, rgba(220, 38, 38, 0.06) 0%, transparent 100%);
+        }
+
+        .brand-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .brand-icon-wrap {
+            width: 42px;
+            height: 42px;
+            border-radius: var(--r-md);
+            background: linear-gradient(135deg, var(--red), #b91c1c);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
+        }
+
+        .brand-text h1 {
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            color: var(--text);
+        }
+
+        .brand-text p {
+            font-size: 11px;
+            color: var(--text-3);
+            margin-top: 1px;
+        }
+
+        /* Search bar */
+        .search-wrap {
+            position: relative;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 13px;
+            color: var(--text-3);
+            pointer-events: none;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 12px 10px 36px;
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-md);
+            color: var(--text);
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-3);
+        }
+
+        .search-input:focus {
+            border-color: var(--border-hot);
+            box-shadow: 0 0 0 3px var(--red-dim);
+        }
+
+        /* --- Filters Container --- */
+        .filters-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Filter block — layout handled by parent flexbox gap */
+
+        .filter-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--text-3);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Chip group */
+        .chip-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .chip {
+            padding: 5px 13px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg-3);
+            color: var(--text-2);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.18s var(--ease);
+            user-select: none;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .chip:hover {
+            border-color: var(--red-2);
+            color: var(--red-2);
+        }
+
+        .chip.active {
+            background: var(--red-dim);
+            border-color: var(--red);
+            color: var(--red-2);
+        }
+
+        /* Star buttons */
+        .stars-row {
+            display: flex;
+            gap: 5px;
+        }
+
+        .star-btn {
+            width: 36px;
+            height: 32px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-3);
+            color: var(--text-2);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.18s var(--ease);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .star-btn:hover {
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        .star-btn.active {
+            background: var(--gold-dim);
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        /* Pill toggles */
+        .pill-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .pill {
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--bg-3);
+            color: var(--text-3);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.18s var(--ease);
+            user-select: none;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .pill:hover {
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        .pill.active {
+            background: var(--green-dim);
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        /* Sort buttons */
+        .sort-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        .sort-btn {
+            padding: 8px 6px;
+            border-radius: var(--r-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-3);
+            color: var(--text-3);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.18s var(--ease);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .sort-btn:hover {
+            border-color: var(--blue);
+            color: var(--blue);
+        }
+
+        .sort-btn.active {
+            background: var(--blue-dim);
+            border-color: var(--blue);
+            color: var(--blue);
+        }
+
+        /* Divider */
+        .divider {
+            height: 1px;
+            background: var(--border);
+            border: none;
+        }
+
+        /* Location section */
+        .manual-loc-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .manual-loc-input {
+            flex: 1;
+            padding: 8px 12px;
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-md);
+            color: var(--text);
+            font-size: 11px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .manual-loc-input:focus {
+            border-color: var(--purple);
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+        }
+
+        .btn-loc-search {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            color: var(--text-2);
+            border-radius: var(--r-md);
+            padding: 0 14px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-loc-search:hover {
+            color: var(--purple);
+            border-color: var(--purple);
+        }
+
+        .btn-location {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: var(--r-md);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            background: var(--purple-dim);
+            color: var(--purple);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s var(--ease);
+            font-family: 'Inter', sans-serif;
+            margin-bottom: 8px;
+        }
+
+        .btn-location:hover {
+            background: rgba(139, 92, 246, 0.18);
+        }
+
+        .btn-location.active {
+            background: var(--purple);
+            border-color: var(--purple);
+            color: white;
+        }
+
+        .location-info {
+            font-size: 11px;
+            color: var(--text-3);
+            text-align: center;
+            min-height: 14px;
+            margin-bottom: 8px;
+            transition: color 0.2s;
+        }
+
+        .radius-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        /* --- Search Action --- */
+        .s-action {
+            padding: 14px 20px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-2);
+        }
+
+        .btn-search {
+            width: 100%;
+            padding: 13px;
+            border-radius: var(--r-md);
+            border: none;
+            background: linear-gradient(135deg, var(--red), #b91c1c);
+            color: white;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s var(--ease);
+            box-shadow: 0 4px 20px rgba(220, 38, 38, 0.3);
+            letter-spacing: 0.2px;
+        }
+
+        .btn-search:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 28px rgba(220, 38, 38, 0.4);
+        }
+
+        .btn-search:active {
+            transform: translateY(0);
+        }
+
+        .btn-search:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading-dot {
+            display: none;
+            width: 5px;
+            height: 5px;
+            background: white;
+            border-radius: 50%;
+            animation: blink 0.7s infinite alternate;
+        }
+
+        .btn-search.loading .loading-dot {
+            display: inline-block;
+        }
+
+        .btn-search.loading .btn-lbl {
+            display: none;
+        }
+
+        @keyframes blink {
+            to {
+                opacity: 0.2;
+            }
+        }
+
+        /* --- Panel navigasi --- */
+        .s-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-3);
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .btn-back {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-2);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-back:hover {
+            background: var(--bg-4);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* ===================== RESULTS PANEL ===================== */
+        .results-panel {
+            display: flex;
+            flex-direction: column;
+            /* sits above filters, appears after search */
+        }
+
+        /* --- Results List --- */
+        .s-results {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 16px;
+        }
+
+        .results-bar {
+            font-size: 11px;
+            color: var(--text-3);
+            font-weight: 500;
+            padding: 4px 4px 8px;
+        }
+
+        /* Cafe Card */
+        .cafe-card {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-lg);
+            margin-bottom: 10px;
+            cursor: pointer;
+            overflow: hidden;
+            transition: all 0.22s var(--ease);
+            position: relative;
+        }
+
+        .cafe-card:hover {
+            border-color: var(--border-hot);
+            background: var(--bg-4);
+            transform: translateX(4px);
+            box-shadow: -4px 0 0 0 var(--red);
+        }
+
+        .cafe-card.focused {
+            border-color: var(--red);
+            background: var(--bg-4);
+            box-shadow: -4px 0 0 0 var(--red), 0 0 0 1px var(--red-dim);
+        }
+
+        /* Thumbnail strip */
+        .card-thumb {
+            height: 80px;
+            position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .card-thumb svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .card-rank {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 800;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-rank.top3 {
+            background: linear-gradient(135deg, var(--red), #b91c1c);
+        }
+
+        .card-rank.other {
+            background: rgba(30, 30, 51, 0.9);
+            border: 1px solid var(--border);
+            color: var(--text-2);
+        }
+
+        /* Card body */
+        .card-body {
+            padding: 12px 14px;
+        }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .card-name {
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.3;
+            flex: 1;
+            color: var(--text);
+        }
+
+        .card-rating {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--gold);
+            white-space: nowrap;
+        }
+
+        .card-addr {
+            font-size: 11px;
+            color: var(--text-3);
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        /* Meta tags row */
+        .card-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 6px;
+        }
+
+        .tag-price {
+            background: var(--green-dim);
+            color: var(--green);
+        }
+
+        .tag-hours {
+            background: var(--blue-dim);
+            color: var(--blue);
+        }
+
+        .tag-dist {
+            background: var(--purple-dim);
+            color: var(--purple);
+        }
+
+        .tag-wifi {
+            background: var(--blue-dim);
+            color: var(--blue);
+        }
+
+        .tag-pwr {
+            background: var(--gold-dim);
+            color: var(--gold);
+        }
+
+        .tag-24h {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--green);
+        }
+
+        .tag-off {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-3);
+            text-decoration: line-through;
+        }
+
+        .card-menu {
+            font-size: 10px;
+            color: var(--text-3);
+            line-height: 1.4;
+            margin-top: 6px;
+        }
+
+        .card-gmaps {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--blue);
+            text-decoration: none;
+            transition: opacity 0.15s;
+        }
+
+        .card-gmaps:hover {
+            opacity: 0.75;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-3);
+        }
+
+        .empty-state .es-icon {
+            font-size: 48px;
+            margin-bottom: 14px;
+        }
+
+        .empty-state p {
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        /* ===================== MAP ===================== */
+        #map {
+            flex: 1;
+            height: 100vh;
+        }
+
+        /* Custom Popup */
+        .cafe-popup .leaflet-popup-content-wrapper {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xl);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-hot);
+            color: var(--text);
+            padding: 0;
+        }
+
+        .cafe-popup .leaflet-popup-content {
+            margin: 0;
+            width: 290px !important;
+        }
+
+        .cafe-popup .leaflet-popup-tip {
+            background: var(--bg-3);
+        }
+
+        .cafe-popup .leaflet-popup-close-button {
+            color: var(--text-3);
+            top: 12px;
+            right: 12px;
+            font-size: 16px;
+        }
+
+        /* Popup thumbnail */
+        .popup-thumb {
+            height: 110px;
+            border-radius: var(--r-xl) var(--r-xl) 0 0;
+            overflow: hidden;
+        }
+
+        .popup-thumb svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .popup-body {
+            padding: 14px 16px 16px;
+        }
+
+        .popup-name {
+            font-size: 15px;
+            font-weight: 800;
+            margin-bottom: 3px;
+            letter-spacing: -0.2px;
+        }
+
+        .popup-addr {
+            font-size: 11px;
+            color: var(--text-3);
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .popup-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .popup-box {
+            background: var(--bg-4);
+            border-radius: var(--r-sm);
+            padding: 8px 10px;
+        }
+
+        .popup-box-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-3);
+        }
+
+        .popup-box-val {
+            font-size: 13px;
+            font-weight: 800;
+            margin-top: 2px;
+        }
+
+        .popup-box-val.green {
+            color: var(--green);
+        }
+
+        .popup-box-val.gold {
+            color: var(--gold);
+        }
+
+        .popup-box-val.blue {
+            color: var(--blue);
+            font-size: 12px;
+        }
+
+        .popup-facs {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .popup-fac {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .popup-fac.yes {
+            background: var(--green-dim);
+            color: var(--green);
+        }
+
+        .popup-fac.no {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-3);
+            text-decoration: line-through;
+            opacity: 0.5;
+        }
+
+        .popup-gmaps-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            padding: 10px;
+            border-radius: var(--r-sm);
+            border: none;
+            background: linear-gradient(135deg, #4285f4, #34a853);
+            color: white;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            font-family: 'Inter', sans-serif;
+            transition: opacity 0.15s;
+        }
+
+        .popup-gmaps-btn:hover {
+            opacity: 0.88;
+        }
+
+        /* Map markers */
+        .map-pin {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 800;
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.85);
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+            font-family: 'Inter', sans-serif;
+        }
+
+        .map-pin.top3 {
+            background: linear-gradient(135deg, var(--red), #b91c1c);
+        }
+
+        .map-pin.rest {
+            background: linear-gradient(135deg, #334155, #1e293b);
+        }
+
+        /* User dot */
+        .user-dot {
+            width: 14px;
+            height: 14px;
+            background: var(--purple);
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 0 0 5px rgba(139, 92, 246, 0.25), 0 3px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* ===================== THUMBNAIL SVGS ===================== */
+        /* Defined inline via JS templates */
+
+        /* ===================== ANIMATIONS ===================== */
+        @keyframes fadeSlide {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .cafe-card {
+            animation: fadeSlide 0.35s var(--ease) both;
+        }
+
+        .cafe-card:nth-child(2) {
+            animation-delay: 0.04s;
+        }
+
+        .cafe-card:nth-child(3) {
+            animation-delay: 0.08s;
+        }
+
+        .cafe-card:nth-child(4) {
+            animation-delay: 0.12s;
+        }
+
+        .cafe-card:nth-child(5) {
+            animation-delay: 0.16s;
+        }
+
+        /* ===================== LANDING PAGE ===================== */
+        .landing {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(ellipse at 60% 40%, rgba(220, 38, 38, 0.13) 0%, transparent 60%),
+                radial-gradient(ellipse at 20% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 50%),
+                var(--bg);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .landing.hide {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(1.03);
+        }
+
+        .landing-card {
+            text-align: center;
+            max-width: 480px;
+            padding: 0 24px;
+        }
+
+        .landing-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            border: 1px solid rgba(220, 38, 38, 0.3);
+            border-radius: 40px;
+            padding: 6px 16px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--red-2);
+            background: var(--red-dim);
+            margin-bottom: 28px;
+        }
+
+        .landing-icon {
+            font-size: 72px;
+            margin-bottom: 20px;
+            display: block;
+            filter: drop-shadow(0 8px 32px rgba(220, 38, 38, 0.4));
+            animation: floatIcon 3s ease-in-out infinite;
+        }
+
+        @keyframes floatIcon {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .landing-title {
+            font-size: clamp(36px, 6vw, 52px);
+            font-weight: 900;
+            letter-spacing: -2px;
+            line-height: 1.1;
+            color: var(--text);
+            margin-bottom: 16px;
+        }
+
+        .landing-title span {
+            background: linear-gradient(135deg, var(--red), #f97316);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .landing-desc {
+            color: var(--text-2);
+            font-size: 15px;
+            line-height: 1.7;
+            margin-bottom: 36px;
+        }
+
+        .landing-stats {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-bottom: 40px;
+        }
+
+        .lstat {
+            text-align: center;
+        }
+
+        .lstat-val {
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: -1px;
+            color: var(--text);
+        }
+
+        .lstat-val span {
+            color: var(--red-2);
+        }
+
+        .lstat-lbl {
+            font-size: 11px;
+            color: var(--text-3);
+            font-weight: 500;
+            margin-top: 2px;
+        }
+
+        .landing-cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 40px;
+            border-radius: var(--r-lg);
+            border: none;
+            background: linear-gradient(135deg, var(--red), #b91c1c);
+            color: white;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 8px 32px rgba(220, 38, 38, 0.45);
+            transition: all 0.25s var(--ease);
+            letter-spacing: 0.2px;
+        }
+
+        .landing-cta:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 14px 40px rgba(220, 38, 38, 0.55);
+        }
+
+        .landing-cta:active {
+            transform: translateY(0);
+        }
+
+        .landing-sub {
+            font-size: 11px;
+            color: var(--text-3);
+            margin-top: 14px;
+        }
+
+        .landing-glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(220, 38, 38, 0.06) 0%, transparent 70%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ============================================================
+       LANDING PAGE
+  ============================================================ -->
+    <div class="landing" id="landingPage">
+        <div class="landing-glow"></div>
+        <div class="landing-card">
+            <div class="landing-badge">☕ Jakarta Selatan · AI Powered</div>
+            <span class="landing-icon">🗺️</span>
+            <h1 class="landing-title">Temukan Kafe<br><span>Terbaik Kamu</span></h1>
+            <p class="landing-desc">Rekomendasi cerdas berbasis AI — filter berdasarkan budget, rating, WiFi, dan jarak
+                dari lokasimu. Data real dari Google Maps.</p>
+            <div class="landing-stats">
+                <div class="lstat">
+                    <div class="lstat-val">500<span>+</span></div>
+                    <div class="lstat-lbl">Kafe Terdaftar</div>
+                </div>
+                <div class="lstat">
+                    <div class="lstat-val">100<span>%</span></div>
+                    <div class="lstat-lbl">Data Real Google Maps</div>
+                </div>
+                <div class="lstat">
+                    <div class="lstat-val">AI<span>✦</span></div>
+                    <div class="lstat-lbl">Smart Filter</div>
+                </div>
+            </div>
+            <button class="landing-cta" onclick="enterApp()">🔍 &nbsp;Mulai Cari Kafe</button>
+            <div class="landing-sub">Gratis selamanya · Tanpa login · Tanpa iklan</div>
+        </div>
+    </div>
+
+
+    <!-- ============================================================
+       SIDEBAR
+  ============================================================ -->
+    <div class="sidebar" id="sidebar">
+
+        <!-- Brand -->
+        <div class="brand-header">
+            <div class="brand-row">
+                <div class="brand-icon-wrap">☕</div>
+                <div class="brand-text">
+                    <h1>CaféFinder</h1>
+                    <p>Jakarta Selatan · AI Recommendation</p>
+                </div>
+            </div>
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="keyword" class="search-input" placeholder="Cari nama kafe atau menu...">
+            </div>
+        </div>
+
+        <!-- Filters scroll area -->
+        <div class="filters-scroll">
+
+            <!-- Budget -->
+            <div class="filter-block">
+                <div class="filter-label">💰 Budget Maksimum</div>
+                <div class="chip-group" id="budgetChips">
+                    <div class="chip" data-val="20000" onclick="selectBudget(this)">≤ 20rb</div>
+                    <div class="chip" data-val="30000" onclick="selectBudget(this)">≤ 30rb</div>
+                    <div class="chip active" data-val="50000" onclick="selectBudget(this)">≤ 50rb</div>
+                    <div class="chip" data-val="75000" onclick="selectBudget(this)">≤ 75rb</div>
+                    <div class="chip" data-val="100000" onclick="selectBudget(this)">Semua</div>
+                </div>
+            </div>
+
+            <!-- Rating -->
+            <div class="filter-block">
+                <div class="filter-label">⭐ Min. Rating</div>
+                <div class="stars-row" id="starsRow">
+                    <div class="star-btn" data-val="0" onclick="selectRating(this)">All</div>
+                    <div class="star-btn" data-val="4.0" onclick="selectRating(this)">4+</div>
+                    <div class="star-btn active" data-val="4.5" onclick="selectRating(this)">4.5+</div>
+                    <div class="star-btn" data-val="4.7" onclick="selectRating(this)">4.7+</div>
+                    <div class="star-btn" data-val="4.9" onclick="selectRating(this)">4.9+</div>
+                </div>
+            </div>
+
+            <!-- Fasilitas -->
+            <div class="filter-block">
+                <div class="filter-label">🏢 Fasilitas</div>
+                <div class="pill-row">
+                    <div class="pill" id="pill-wifi" onclick="togglePill(this)">📶 WiFi</div>
+                    <div class="pill" id="pill-power" onclick="togglePill(this)">🔌 Colokan</div>
+                    <div class="pill" id="pill-24h" onclick="togglePill(this)">🌙 24 Jam</div>
+                </div>
+            </div>
+
+            <!-- Sort -->
+            <div class="filter-block">
+                <div class="filter-label">📊 Urutkan</div>
+                <div class="sort-grid" id="sortRow">
+                    <div class="sort-btn active" data-val="rating" onclick="selectSort(this)">⭐ Rating</div>
+                    <div class="sort-btn" data-val="price_low" onclick="selectSort(this)">💰 Termurah</div>
+                    <div class="sort-btn" data-val="price_high" onclick="selectSort(this)">💎 Termahal</div>
+                    <div class="sort-btn" data-val="nearest" onclick="selectSort(this)">📍 Terdekat</div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- Lokasi GPS -->
+            <div class="filter-block">
+                <div class="filter-label">🗺️ Lokasi Saya</div>
+                <div class="manual-loc-row">
+                    <input type="text" id="manualLocInput" class="manual-loc-input"
+                        placeholder="Ketik nama area atau kota...">
+                    <button class="btn-loc-search" onclick="searchManualLocation()">Cari</button>
+                </div>
+                <button class="btn-location" id="btnLocation" onclick="toggleLocation()">
+                    📍 Aktifkan Lokasi Saya
+                </button>
+                <div class="location-info" id="locationInfo">Belum aktif</div>
+                <div class="radius-group" id="radiusChips" style="display:none;">
+                    <div class="chip" data-val="1" onclick="selectRadius(this)">≤ 1 km</div>
+                    <div class="chip" data-val="2" onclick="selectRadius(this)">≤ 2 km</div>
+                    <div class="chip active" data-val="5" onclick="selectRadius(this)">≤ 5 km</div>
+                    <div class="chip" data-val="10" onclick="selectRadius(this)">≤ 10 km</div>
+                    <div class="chip" data-val="0" onclick="selectRadius(this)">Semua</div>
+                </div>
+            </div>
+
+        </div><!-- /filters-scroll -->
+
+        <!-- Search button (sticky bottom) -->
+        <div class="s-action">
+            <button class="btn-search" id="searchBtn" onclick="doSearch()">
+                <span class="btn-lbl">🔍&nbsp; Cari Kafe</span>
+                <span class="loading-dot"></span>
+                <span class="loading-dot" style="animation-delay:.2s"></span>
+                <span class="loading-dot" style="animation-delay:.4s"></span>
+            </button>
+        </div>
+
+        <!-- Results overlay (fills sidebar above action) -->
+        <div class="s-results" id="resultsList"
+            style="display:none; position:absolute; top:0; bottom:0; left:0; right:0; background:var(--bg-2); z-index:10; border-right:1px solid var(--border); overflow-y:auto; padding:0;">
+            <div class="s-nav">
+                <button class="btn-back" onclick="closeResults()">⬅ Kembali ke Home</button>
+            </div>
+            <div id="resultsContent" style="padding: 12px 16px;">
+                <!-- populated by JS -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MAP -->
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+
+        // ===================== THUMBNAIL SVG TEMPLATES =====================
+        const THUMBS = {
+            starbucks: (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 ${h}" preserveAspectRatio="xMidYMid slice">
+        <rect width="380" height="${h}" fill="#00704A"/>
+        <rect opacity=".2" x="0" y="0" width="380" height="${h}" fill="url(#sb)"/>
+        <defs><linearGradient id="sb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#00704A"/></linearGradient></defs>
+        <text x="190" y="${h / 2 + 22}" font-size="40" text-anchor="middle" fill="rgba(255,255,255,0.15)">☕</text>
+        <circle cx="320" cy="20" r="60" fill="rgba(255,255,255,0.05)"/>
+        <circle cx="30"  cy="${h}" r="50" fill="rgba(255,255,255,0.05)"/>
+      </svg>`,
+
+            specialty: (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 ${h}" preserveAspectRatio="xMidYMid slice">
+        <rect width="380" height="${h}" fill="#1c1212"/>
+        <defs><linearGradient id="sp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a1010"/><stop offset="1" stop-color="#0d0d0d"/></linearGradient></defs>
+        <rect width="380" height="${h}" fill="url(#sp)"/>
+        <text x="190" y="${h / 2 + 22}" font-size="40" text-anchor="middle" fill="rgba(220,38,38,0.18)">☕</text>
+        <circle cx="350" cy="-10" r="80" fill="rgba(220,38,38,0.08)"/>
+        <circle cx="40"  cy="${h + 10}" r="60" fill="rgba(220,38,38,0.06)"/>
+      </svg>`,
+
+            kopi_susu: (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 ${h}" preserveAspectRatio="xMidYMid slice">
+        <rect width="380" height="${h}" fill="#1a1208"/>
+        <defs><linearGradient id="ks" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3d2b00"/><stop offset="1" stop-color="#0d0900"/></linearGradient></defs>
+        <rect width="380" height="${h}" fill="url(#ks)"/>
+        <text x="190" y="${h / 2 + 20}" font-size="38" text-anchor="middle" fill="rgba(245,158,11,0.15)">🥛</text>
+        <rect x="0" y="${h - 6}" width="380" height="6" rx="0" fill="rgba(245,158,11,0.12)"/>
+      </svg>`,
+
+            bubble_tea: (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 ${h}" preserveAspectRatio="xMidYMid slice">
+        <rect width="380" height="${h}" fill="#0f0a1a"/>
+        <defs><linearGradient id="bt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2d1b4e"/><stop offset="1" stop-color="#0a0614"/></linearGradient></defs>
+        <rect width="380" height="${h}" fill="url(#bt)"/>
+        <circle cx="60"  cy="25"       r="18" fill="rgba(139,92,246,0.12)"/>
+        <circle cx="180" cy="${h - 15}"  r="22" fill="rgba(139,92,246,0.10)"/>
+        <circle cx="320" cy="35"       r="14" fill="rgba(139,92,246,0.14)"/>
+        <text x="190" y="${h / 2 + 20}" font-size="36" text-anchor="middle" fill="rgba(139,92,246,0.2)">🧋</text>
+      </svg>`,
+
+            bakery: (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 ${h}" preserveAspectRatio="xMidYMid slice">
+        <defs><linearGradient id="bk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b2000"/><stop offset="1" stop-color="#140d00"/></linearGradient></defs>
+        <rect width="380" height="${h}" fill="url(#bk)"/>
+        <text x="190" y="${h / 2 + 20}" font-size="36" text-anchor="middle" fill="rgba(245,158,11,0.18)">🥐</text>
+        <rect x="0" y="${h - 4}" width="380" height="4" fill="rgba(245,158,11,0.1)"/>
+      </svg>`,
+
+            dessert: (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 ${h}" preserveAspectRatio="xMidYMid slice">
+        <defs><linearGradient id="ds" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1a0a1e"/><stop offset="1" stop-color="#0d0010"/></linearGradient></defs>
+        <rect width="380" height="${h}" fill="url(#ds)"/>
+        <text x="190" y="${h / 2 + 20}" font-size="36" text-anchor="middle" fill="rgba(236,72,153,0.18)">🍨</text>
+      </svg>`,
+
+            default: (h) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 ${h}" preserveAspectRatio="xMidYMid slice">
+        <defs><linearGradient id="df" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#141428"/><stop offset="1" stop-color="#0a0a18"/></linearGradient></defs>
+        <rect width="380" height="${h}" fill="url(#df)"/>
+        <text x="190" y="${h / 2 + 20}" font-size="36" text-anchor="middle" fill="rgba(255,255,255,0.06)">☕</text>
+      </svg>`,
+        };
+
+        function thumb(cat, h = 80) {
+            return (THUMBS[cat] || THUMBS.default)(h);
+        }
+
+        // ===================== STATE =====================
+        let selectedBudget = 50000;
+        let selectedRating = 4.5;
+        let selectedSort = 'rating';
+        let selectedRadius = 5;
+        let userLat = null, userLon = null;
+        let userMarker = null;
+        let markers = [];
+        let currentCafes = [];
+
+        // ===================== MAP INIT =====================
+        const map = L.map('map', { zoomControl: false }).setView([-6.245, 106.852], 13);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap © CARTO'
+        }).addTo(map);
+
+        // ===================== FILTER CONTROLS =====================
+        function selectBudget(el) {
+            document.querySelectorAll('#budgetChips .chip').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            selectedBudget = parseInt(el.dataset.val);
+        }
+
+        function selectRating(el) {
+            document.querySelectorAll('#starsRow .star-btn').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            selectedRating = parseFloat(el.dataset.val);
+        }
+
+        function togglePill(el) { el.classList.toggle('active'); }
+
+        function selectSort(el) {
+            document.querySelectorAll('#sortRow .sort-btn').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            selectedSort = el.dataset.val;
+            if (el.dataset.val === 'nearest' && !userLat) {
+                const info = document.getElementById('locationInfo');
+                info.textContent = '⚠️ Aktifkan GPS dulu!';
+                info.style.color = 'var(--red-2)';
+            }
+        }
+
+        function selectRadius(el) {
+            document.querySelectorAll('#radiusChips .chip').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            selectedRadius = parseFloat(el.dataset.val);
+        }
+
+        // ===================== GPS & MANUAL LOCATION =====================
+        function renderUserMarker() {
+            if (userMarker) map.removeLayer(userMarker);
+            const icon = L.divIcon({
+                className: '',
+                html: '<div class="user-dot"></div>',
+                iconSize: [14, 14], iconAnchor: [7, 7]
+            });
+            userMarker = L.marker([userLat, userLon], { icon })
+                .addTo(map)
+                .bindPopup('<div class="popup-body"><div class="popup-name">📍 Lokasi Kamu</div></div>');
+            map.setView([userLat, userLon], 15, { animate: true });
+        }
+
+        async function searchManualLocation() {
+            const input = document.getElementById('manualLocInput').value.trim();
+            const info = document.getElementById('locationInfo');
+            if (!input) return;
+
+            info.textContent = 'Mencari lokasi...';
+            info.style.color = '';
+
+            try {
+                const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(input)}&format=json&limit=1`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data && data.length > 0) {
+                    userLat = parseFloat(data[0].lat);
+                    userLon = parseFloat(data[0].lon);
+
+                    const btn = document.getElementById('btnLocation');
+                    btn.classList.add('active');
+                    btn.textContent = '❌ Reset Lokasi';
+
+                    info.textContent = `📍 ${data[0].display_name.split(',')[0]} (${userLat.toFixed(4)}, ${userLon.toFixed(4)})`;
+                    info.style.color = 'var(--purple)';
+                    document.getElementById('radiusChips').style.display = 'flex';
+
+                    renderUserMarker();
+                } else {
+                    info.textContent = '❌ Lokasi tidak ditemukan';
+                    info.style.color = 'var(--red-2)';
+                }
+            } catch (err) {
+                info.textContent = '❌ Error mencari lokasi';
+            }
+        }
+
+        function toggleLocation() {
+            const btn = document.getElementById('btnLocation');
+            const info = document.getElementById('locationInfo');
+            const rEl = document.getElementById('radiusChips');
+
+            if (userLat) {
+                userLat = userLon = null;
+                btn.classList.remove('active');
+                btn.textContent = '📍 Aktifkan Lokasi Saya';
+                info.textContent = 'Belum aktif';
+                info.style.color = '';
+                rEl.style.display = 'none';
+                document.getElementById('manualLocInput').value = '';
+                if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+                return;
+            }
+
+            btn.textContent = '⏳ Mengambil lokasi...';
+            info.textContent = 'Meminta izin GPS...';
+
+            if (!navigator.geolocation) {
+                info.textContent = '❌ Browser tidak mendukung GPS';
+                btn.textContent = '📍 Aktifkan Lokasi Saya';
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    userLat = pos.coords.latitude;
+                    userLon = pos.coords.longitude;
+                    btn.classList.add('active');
+                    btn.textContent = '❌ Reset Lokasi';
+                    info.textContent = `📌 ${userLat.toFixed(5)}, ${userLon.toFixed(5)}`;
+                    info.style.color = 'var(--purple)';
+                    rEl.style.display = 'flex';
+
+                    renderUserMarker();
+                },
+                () => {
+                    btn.textContent = '📍 Aktifkan Lokasi Saya';
+                    info.textContent = '❌ Izin GPS ditolak';
+                    info.style.color = 'var(--red-2)';
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // ===================== HELPERS =====================
+        function fmtRp(n) {
+            if (n >= 1000) return 'Rp ' + (n / 1000).toFixed(0) + 'rb';
+            return 'Rp ' + n;
+        }
+
+        function fmtDist(d) {
+            if (d === null || d === undefined) return '';
+            return d < 1 ? `${(d * 1000).toFixed(0)} m` : `${d.toFixed(1)} km`;
+        }
+
+        function nowTime() {
+            const n = new Date();
+            return n.getHours().toString().padStart(2, '0') + ':' + n.getMinutes().toString().padStart(2, '0');
+        }
+
+        // ===================== LANDING TRANSITION =====================
+        function enterApp() {
+            document.getElementById('landingPage').classList.add('hide');
+            setTimeout(() => {
+                document.getElementById('landingPage').style.display = 'none';
+            }, 650);
+        }
+
+        // ===================== SEARCH =====================
+        async function doSearch() {
+            const btn = document.getElementById('searchBtn');
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            const payload = {
+                max_budget: selectedBudget,
+                min_rating: selectedRating,
+                wifi_required: document.getElementById('pill-wifi').classList.contains('active'),
+                power_outlet_required: document.getElementById('pill-power').classList.contains('active'),
+                open_24h_required: document.getElementById('pill-24h').classList.contains('active'),
+                open_now: null,
+                sort_by: selectedSort,
+                keyword: document.getElementById('keyword').value.trim(),
+                user_lat: userLat,
+                user_lon: userLon,
+                max_distance_km: userLat ? selectedRadius : 0,
+            };
+
+            try {
+                const res = await fetch('http://localhost:8000/rekomendasi', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) throw new Error('server error');
+                const data = await res.json();
+                currentCafes = data.data;
+                showResults(data);
+                renderMarkers(data.data);
+
+            } catch (err) {
+                showError();
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        }
+
+        // ===================== NAVIGATION =====================
+        function closeResults() {
+            document.getElementById('resultsList').style.display = 'none';
+            map.setView([-6.245, 106.852], 13, { animate: true });
+        }
+
+        // ===================== RENDER RESULTS =====================
+        function showResults(data) {
+            const el = document.getElementById('resultsList');
+            const cont = document.getElementById('resultsContent');
+            el.style.display = 'block';
+
+            if (data.total === 0) {
+                cont.innerHTML = `
+          <div class="empty-state">
+            <div class="es-icon">😕</div>
+            <p>${data.message}</p>
+          </div>`;
+                return;
+            }
+
+            let html = `<div class="results-bar">${data.message}</div>`;
+
+            data.data.forEach((c, i) => {
+                const cat = c.thumbnail_category || 'default';
+                const dist = c.distance_km !== null && c.distance_km !== undefined
+                    ? `<span class="tag tag-dist">📍 ${fmtDist(c.distance_km)}</span>` : '';
+                const wifiTag = c.has_wifi
+                    ? `<span class="tag tag-wifi">📶 WiFi</span>`
+                    : `<span class="tag tag-off">📶 WiFi</span>`;
+                const pwrTag = c.has_power_outlet
+                    ? `<span class="tag tag-pwr">🔌 Colokan</span>`
+                    : `<span class="tag tag-off">🔌 Colokan</span>`;
+                const h24Tag = c.is_24h ? `<span class="tag tag-24h">🌙 24 Jam</span>` : '';
+                const rankCls = i < 3 ? 'top3' : 'other';
+
+                // Bersihkan menu string dari tag OSM mentah
+                const menuClean = cleanMenu(c.menu_highlights);
+
+                html += `
+          <div class="cafe-card" id="card-${c.cafe_id}" onclick="focusCafe(${i})" style="animation-delay:${i * 0.04}s">
+            <div class="card-thumb">
+              ${thumb(cat, 80)}
+              <div class="card-rank ${rankCls}">${i + 1}</div>
+            </div>
+            <div class="card-body">
+              <div class="card-top">
+                <div class="card-name">${c.cafe_name}</div>
+                <div class="card-rating">⭐ ${c.rating}</div>
+              </div>
+              <div class="card-addr">📍 ${c.address}</div>
+              <div class="card-meta">
+                <span class="tag tag-price">${fmtRp(c.price_min)} – ${fmtRp(c.price_max)}</span>
+                <span class="tag tag-hours">🕐 ${c.opening_hours}</span>
+                ${dist}
+              </div>
+              <div class="card-meta" style="margin-top:5px;">
+                ${wifiTag}${pwrTag}${h24Tag}
+              </div>
+              ${menuClean ? `<div class="card-menu">🍽️ ${menuClean}</div>` : ''}
+              <a class="card-gmaps" href="${c.google_maps_url}" target="_blank" onclick="event.stopPropagation()">
+                📸 Lihat di Google Maps →
+              </a>
+            </div>
+          </div>`;
+            });
+
+            cont.innerHTML = html;
+        }
+
+        function cleanMenu(raw) {
+            if (!raw) return '';
+            // Remove pure OSM tags like "coffee_shop;indonesian"
+            if (/^[a-z_]+([;][a-z_]+)*$/.test(raw.trim())) return '';
+            return raw.length > 60 ? raw.substring(0, 60) + '…' : raw;
+        }
+
+        function showError() {
+            const el = document.getElementById('resultsList');
+            const cont = document.getElementById('resultsContent');
+            el.style.display = 'block';
+            cont.innerHTML = `
+        <div class="empty-state">
+          <div class="es-icon">⚠️</div>
+          <p>Gagal konek ke server.<br>Jalankan backend:<br>
+          <code style="color:var(--red-2);font-size:11px;">uvicorn main:app --reload --port 8000</code></p>
+        </div>`;
+        }
+
+        // ===================== MAP MARKERS =====================
+        function renderMarkers(cafes) {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+
+            let bounds = [];
+            cafes.forEach((c, i) => {
+                const cls = i < 3 ? 'top3' : 'rest';
+                const icon = L.divIcon({
+                    className: '',
+                    html: `<div class="map-pin ${cls}">${i + 1}</div>`,
+                    iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -20]
+                });
+
+                const cat = c.thumbnail_category || 'default';
+                const distLine = c.distance_km !== null && c.distance_km !== undefined
+                    ? `<span style="color:var(--purple);font-weight:700">📍 ${fmtDist(c.distance_km)}</span>` : '';
+
+                const popup = `
+          <div>
+            <div class="popup-thumb">${thumb(cat, 110)}</div>
+            <div class="popup-body">
+              <div class="popup-name">${c.cafe_name}</div>
+              <div class="popup-addr">📍 ${c.address}</div>
+              <div class="popup-grid">
+                <div class="popup-box">
+                  <div class="popup-box-label">Harga</div>
+                  <div class="popup-box-val green">${fmtRp(c.price_min)}<br>– ${fmtRp(c.price_max)}</div>
+                </div>
+                <div class="popup-box">
+                  <div class="popup-box-label">Rating</div>
+                  <div class="popup-box-val gold">⭐ ${c.rating}</div>
+                </div>
+                <div class="popup-box" style="grid-column:span 2">
+                  <div class="popup-box-label">Jam Buka</div>
+                  <div class="popup-box-val blue">🕐 ${c.opening_hours}${distLine ? ' · ' + distLine : ''}</div>
+                </div>
+              </div>
+              <div class="popup-facs">
+                <span class="popup-fac ${c.has_wifi ? 'yes' : 'no'}">📶 WiFi</span>
+                <span class="popup-fac ${c.has_power_outlet ? 'yes' : 'no'}">🔌 Colokan</span>
+                ${c.is_24h ? '<span class="popup-fac yes">🌙 24 Jam</span>' : ''}
+              </div>
+              <a class="popup-gmaps-btn" href="${c.google_maps_url}" target="_blank">
+                📸 Buka di Google Maps
+              </a>
+            </div>
+          </div>`;
+
+                const m = L.marker([c.latitude, c.longitude], { icon }).addTo(map);
+                m.bindPopup(popup, { className: 'cafe-popup', maxWidth: 310 });
+                markers.push(m);
+                bounds.push([c.latitude, c.longitude]);
+            });
+
+            if (bounds.length) map.fitBounds(bounds, { padding: [50, 60], maxZoom: 15 });
+        }
+
+        // ===================== FOCUS ON CARD CLICK =====================
+        function focusCafe(idx) {
+            const c = currentCafes[idx];
+            if (!c) return;
+            document.querySelectorAll('.cafe-card').forEach(el => el.classList.remove('focused'));
+            document.getElementById(`card-${c.cafe_id}`)?.classList.add('focused');
+            map.setView([c.latitude, c.longitude], 16, { animate: true });
+            markers[idx]?.openPopup();
+        }
+
+        // ===================== KEYBOARD =====================
+        document.getElementById('keyword').addEventListener('keydown', e => {
+            if (e.key === 'Enter') doSearch();
+        });
+
+    </script>
+</body>
+
+</html>
