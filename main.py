@@ -54,22 +54,39 @@ def load_data():
         df['opening_hours'] = "08:00 - 22:00" # fallback dasar
         df['menu_highlights'] = "Kopi Spesial & Makanan Ringan"
         
-        # Estimasi harga dari simbol ($, $$ dsb) jika ada di kolom 'price'
-        def parse_price(val):
-            val = str(val).strip()
+        # Estimasi harga dari simbol ($, $$ dsb). Jika kosong, buat variasi realistis otomatis (untuk portofolio)
+        def get_price(row):
+            val = str(row.get('price', '')).strip()
             if val == '$$$$': return 150000, 300000
             if val == '$$$': return 100000, 150000
             if val == '$$': return 50000, 100000
             if val == '$': return 25000, 50000
-            return 50000, 100000
             
-        if 'price' in df_raw.columns:
-            prices = df_raw['price'].apply(parse_price)
-            df['price_min'] = [p[0] for p in prices]
-            df['price_max'] = [p[1] for p in prices]
-        else:
-            df['price_min'] = 50000
-            df['price_max'] = 100000
+            name = str(row.get('title', '')).lower()
+            idx = row.name
+            
+            # Variasi berdasarkan brand populer
+            if any(k in name for k in ["starbucks", "toby's", "excelso", "anomali", "djournal", "tanamera"]):
+                return 100000, 150000
+            if any(k in name for k in ["warkop", "warung", "indomie"]):
+                return 10000, 25000
+            if any(k in name for k in ["tuku", "kenangan", "janji jiwa", "mixue", "haus", "jago", "fore"]):
+                return 25000, 50000
+                
+            # Random deterministik untuk sisanya agar data bervariasi (cocok buat filter harga)
+            h = (idx * 13) % 100
+            if h < 25:
+                return 25000, 50000   # 25% Murah
+            elif h < 80:
+                return 50000, 100000  # 55% Menengah
+            elif h < 95:
+                return 100000, 150000 # 15% Agak mahal
+            else:
+                return 150000, 300000 # 5% Sultan
+                
+        prices = df_raw.apply(get_price, axis=1)
+        df['price_min'] = [p[0] for p in prices]
+        df['price_max'] = [p[1] for p in prices]
             
         # Ekstrak Fasilitas dan Jam Buka dari data Google Maps secara akurat
         has_wifi = []
