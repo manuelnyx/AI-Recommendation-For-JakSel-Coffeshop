@@ -1532,7 +1532,7 @@
             };
 
             try {
-                const res = await fetch('http://localhost:8000/rekomendasi', {
+                const res = await fetch('/rekomendasi', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
